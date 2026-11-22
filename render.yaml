@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: stremio-opensubtitles-uploader
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: OPENSUBTITLES_API_KEY
+        value: TKh62mCcPfEorphr0grM4QyGsUak8wM1
+      - key: OPENSUBTITLES_USERNAME
+        value: eljoar
