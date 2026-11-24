@@ -197,30 +197,28 @@ async def get_subtitles(type: str, id: str, request: Request, extra: Optional[st
                     # Normalizar a ISO 639-2 que Stremio entiende de forma estándar
                     stremio_lang = "spa" if lang_code in ["es", "spl", "es-419"] else "eng"
 
-                    # Armado del LABEL visible en Stremio
-                    is_my_upload = (uploader_name.lower() == MY_USERNAME)
-                    
-                    if is_my_upload:
-                        label = f"Latino [{uploader_name}] ⭐ - {release}"
-                    else:
-                        lang_name = "Latino" if lang_code == "spl" else ("Español" if stremio_lang == "spa" else "Inglés")
-                        label = f"{lang_name} [{uploader_name}] - {release}"
+                    # Filtrar estrictamente: solo subtítulos subidos por eljoar
+                    raw_release = (attrs.get("release") or "").lower()
+                    raw_filename = (files[0].get("file_name") or "").lower()
+                    is_my_upload = (
+                        uploader_name.lower() == MY_USERNAME 
+                        or "eljoar" in raw_release 
+                        or "eljoar" in raw_filename
+                    )
+
+                    if not is_my_upload:
+                        continue
 
                     # Enlace de descarga servido a través de nuestro proxy para garantizar UTF-8
                     sub_url = f"{scheme}://{host}/sub/{file_id}.srt"
 
-                    # Colocar de primero los subtítulos de eljoar
                     sub_obj = {
                         "id": f"os_uploader_{file_id}",
                         "url": sub_url,
                         "lang": stremio_lang,
-                        "label": label
+                        "label": f"Latino [eljoar] - {release}"
                     }
-
-                    if is_my_upload:
-                        subtitles_list.insert(0, sub_obj)
-                    else:
-                        subtitles_list.append(sub_obj)
+                    subtitles_list.append(sub_obj)
 
     except Exception as e:
         print(f"Error consultando OpenSubtitles: {e}")
