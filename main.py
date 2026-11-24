@@ -220,10 +220,20 @@ async def get_subtitles(type: str, id: str, request: Request, extra: Optional[st
 
                         uploader_info = attrs.get("uploader") or {}
                         uploader_name = (uploader_info.get("name") or "").lower()
+                        uploader_id = uploader_info.get("uploader_id")
                         release = (attrs.get("release") or "").lower()
                         filename = (files[0].get("file_name") or "").lower()
+                        comments = (attrs.get("comments") or "").lower()
 
-                        if "eljoar" in uploader_name or "eljoar" in release or "eljoar" in filename:
+                        is_mine = (
+                            uploader_name == "eljoar"
+                            or uploader_id == 55503
+                            or "eljoar" in release
+                            or "eljoar" in filename
+                            or "eljoar" in comments
+                        )
+
+                        if is_mine:
                             sub_url = f"{scheme}://{host}/sub/{file_id}.srt"
                             if sub_url not in seen_urls:
                                 lang_code = attrs.get("language", "es").lower()
