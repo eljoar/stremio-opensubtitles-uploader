@@ -29,9 +29,9 @@ SUBTITLE_CACHE: Dict[int, str] = {}
 
 MANIFEST = {
     "id": "community.opensubtitles.uploader",
-    "version": "1.0.0",
-    "name": "OpenSubtitles (con Uploader)",
-    "description": "Muestra el nombre de quien subió el subtítulo (Uploader) y el Release en Stremio.",
+    "version": "1.0.1",
+    "name": "OpenSubtitles [eljoar]",
+    "description": "Subtítulos de OpenSubtitles identificados con [eljoar].",
     "logo": "https://raw.githubusercontent.com/stremio/stremio-addons/master/images/opensubtitles.png",
     "resources": [
         {
@@ -61,7 +61,7 @@ async def landing(request: Request):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>OpenSubtitles (con Uploader) - Stremio Addon</title>
+        <title>OpenSubtitles [eljoar] - Stremio Addon</title>
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center p-4">
@@ -73,7 +73,7 @@ async def landing(request: Request):
             </div>
             
             <div>
-                <h1 class="text-2xl sm:text-3xl font-extrabold text-white">OpenSubtitles con Uploader</h1>
+                <h1 class="text-2xl sm:text-3xl font-extrabold text-white">OpenSubtitles [eljoar]</h1>
                 <p class="text-slate-400 text-sm mt-2">
                     Addon para Stremio que identifica claramente quién subió el subtítulo (ej: <span class="text-purple-400 font-semibold">[eljoar]</span>) y para qué release es.
                 </p>
