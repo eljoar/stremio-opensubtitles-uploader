@@ -44,7 +44,14 @@ MANIFEST = {
     "catalogs": []
 }
 
+@app.get("/ping")
+@app.head("/ping")
+@app.head("/")
+async def ping():
+    return Response(content="OK", media_type="text/plain", status_code=200)
+
 @app.get("/manifest.json")
+@app.head("/manifest.json")
 async def get_manifest():
     return JSONResponse(content=MANIFEST, headers={"Access-Control-Allow-Origin": "*"})
 
