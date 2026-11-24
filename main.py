@@ -147,88 +147,96 @@ def parse_stremio_id(raw_id: str) -> Dict[str, Any]:
 async def get_subtitles(type: str, id: str, request: Request, extra: Optional[str] = None):
     """
     Endpoint principal del protocolo de Stremio para consultar subtítulos.
+    Estrategia de detección infalible:
+    1. Consulta el clúster oficial de Stremio (donde Stremio indexa los subtítulos).
+    2. Comprueba si el subtítulo contiene la dedicatoria o firma 'eljoar'.
+    3. Consulta también OpenSubtitles REST API v1 por si fue subido recientemente.
     """
-    parsed = parse_stremio_id(id)
-    if not parsed["imdb_id"]:
-        return JSONResponse(content={"subtitles": []}, headers={"Access-Control-Allow-Origin": "*"})
-
-    # Consultar OpenSubtitles API v1
-    url = "https://api.opensubtitles.com/api/v1/subtitles"
-    params = {
-        "imdb_id": parsed["imdb_id"],
-        "languages": "es,spl,en"  # Español y opcionalmente inglés
-    }
-    if parsed["season"] is not None:
-        params["season_number"] = parsed["season"]
-    if parsed["episode"] is not None:
-        params["episode_number"] = parsed["episode"]
-
-    headers = {
-        "Api-Key": OPENSUBTITLES_API_KEY,
-        "User-Agent": "StremioOpenSubtitlesUploader v1.0"
-    }
-
     subtitles_list: List[Dict[str, Any]] = []
+    seen_urls = set()
 
+    # 1. Búsqueda directa en el repositorio oficial de Stremio
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=12.0) as client:
-            res = await client.get(url, params=params, headers=headers)
+        stremio_api_url = f"https://opensubtitles-v3.strem.io/subtitles/{type}/{id}.json"
+        async with httpx.AsyncClient(follow_redirects=True, timeout=6.0) as client:
+            res = await client.get(stremio_api_url)
             if res.status_code == 200:
-                data = res.json().get("data", [])
-                
-                host = request.headers.get("host", "127.0.0.1:7000")
-                scheme = "https" if request.url.scheme == "https" or "render" in host or "koyeb" in host or "hf.space" in host else "http"
-
-                for item in data:
-                    attrs = item.get("attributes", {})
-                    files = attrs.get("files", [])
-                    if not files:
-                        continue
-                    
-                    file_id = files[0].get("file_id")
-                    if not file_id:
-                        continue
-
-                    # Uploader y Release
-                    uploader_info = attrs.get("uploader") or {}
-                    uploader_name = uploader_info.get("name") if isinstance(uploader_info, dict) else None
-                    if not uploader_name:
-                        uploader_name = "anónimo"
-
-                    release = attrs.get("release") or files[0].get("file_name") or "Release"
-                    # Acortar release si es excesivamente largo
-                    if len(release) > 30:
-                        release = release[:28] + ".."
-
-                    lang_code = attrs.get("language", "es").lower()
-                    # Normalizar a ISO 639-2 que Stremio entiende de forma estándar
-                    stremio_lang = "spa" if lang_code in ["es", "spl", "es-419"] else "eng"
-
-                    # Filtrar estrictamente: solo subtítulos subidos por eljoar
-                    raw_release = (attrs.get("release") or "").lower()
-                    raw_filename = (files[0].get("file_name") or "").lower()
-                    is_my_upload = (
-                        uploader_name.lower() == MY_USERNAME 
-                        or "eljoar" in raw_release 
-                        or "eljoar" in raw_filename
-                    )
-
-                    if not is_my_upload:
-                        continue
-
-                    # Enlace de descarga servido a través de nuestro proxy para garantizar UTF-8
-                    sub_url = f"{scheme}://{host}/sub/{file_id}.srt"
-
-                    sub_obj = {
-                        "id": f"os_uploader_{file_id}",
-                        "url": sub_url,
-                        "lang": stremio_lang,
-                        "label": f"Latino [eljoar] - {release}"
-                    }
-                    subtitles_list.append(sub_obj)
-
+                subs = res.json().get("subtitles", [])
+                for s in subs:
+                    # Nos enfocamos en subtítulos en español (es, spa, spl)
+                    if s.get("lang") in ["spl", "spa", "es", "es-419"]:
+                        url = s.get("url")
+                        if url and url not in seen_urls:
+                            try:
+                                # Comprobar los primeros 600 bytes del archivo buscando 'eljoar'
+                                peek = await client.get(url, headers={"Range": "bytes=0-600"}, timeout=3.5)
+                                if "eljoar" in peek.text.lower():
+                                    subtitles_list.append({
+                                        "id": f"eljoar_{s.get('id')}",
+                                        "url": url,
+                                        "lang": s.get("lang", "spl"),
+                                        "label": "Español Latino [eljoar]"
+                                    })
+                                    seen_urls.add(url)
+                            except Exception:
+                                pass
     except Exception as e:
-        print(f"Error consultando OpenSubtitles: {e}")
+        print(f"Error consultando clúster Stremio: {e}")
+
+    # 2. Búsqueda en OpenSubtitles REST API v1
+    parsed = parse_stremio_id(id)
+    if parsed["imdb_id"]:
+        try:
+            url = "https://api.opensubtitles.com/api/v1/subtitles"
+            params = {
+                "imdb_id": parsed["imdb_id"],
+                "languages": "es,spl"
+            }
+            if parsed["season"] is not None:
+                params["season_number"] = parsed["season"]
+            if parsed["episode"] is not None:
+                params["episode_number"] = parsed["episode"]
+
+            headers = {
+                "Api-Key": OPENSUBTITLES_API_KEY,
+                "User-Agent": "StremioOpenSubtitlesUploader v1.0"
+            }
+
+            host = request.headers.get("host", "127.0.0.1:7000")
+            scheme = "https" if request.url.scheme == "https" or "render" in host or "koyeb" in host or "hf.space" in host else "http"
+
+            async with httpx.AsyncClient(follow_redirects=True, timeout=8.0) as client:
+                res = await client.get(url, params=params, headers=headers)
+                if res.status_code == 200:
+                    data = res.json().get("data", [])
+                    for item in data:
+                        attrs = item.get("attributes", {})
+                        files = attrs.get("files", [])
+                        if not files:
+                            continue
+                        file_id = files[0].get("file_id")
+                        if not file_id:
+                            continue
+
+                        uploader_info = attrs.get("uploader") or {}
+                        uploader_name = (uploader_info.get("name") or "").lower()
+                        release = (attrs.get("release") or "").lower()
+                        filename = (files[0].get("file_name") or "").lower()
+
+                        if "eljoar" in uploader_name or "eljoar" in release or "eljoar" in filename:
+                            sub_url = f"{scheme}://{host}/sub/{file_id}.srt"
+                            if sub_url not in seen_urls:
+                                lang_code = attrs.get("language", "es").lower()
+                                stremio_lang = "spl" if lang_code == "spl" else "spa"
+                                subtitles_list.append({
+                                    "id": f"os_uploader_{file_id}",
+                                    "url": sub_url,
+                                    "lang": stremio_lang,
+                                    "label": f"Latino [eljoar] - {attrs.get('release') or 'WEB'}"
+                                })
+                                seen_urls.add(sub_url)
+        except Exception as e:
+            print(f"Error consultando OpenSubtitles REST: {e}")
 
     return JSONResponse(
         content={"subtitles": subtitles_list},
